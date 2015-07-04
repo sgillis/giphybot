@@ -1,0 +1,6 @@
+*.swp
+telegram.env
+dist/*
+.cabal/*
+.ghc/*
+test.json
