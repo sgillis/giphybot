@@ -5,6 +5,8 @@ module Main where
 import System.Environment
 import Web.Spock.Safe
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.Trans.State as S
+import Control.Monad
 import Network.HTTP.Types.Status
 import Network.URL
 import Data.Text
@@ -40,7 +42,11 @@ execCmd (SearchGiphy t) = do
     mpr <- search giphyToken (def { search_q = t, search_limit = 1 })
     case mpr of
         Nothing -> return NoResponse
-        Just pr -> return $ Giphy $ getFirstResultURL pr
+        Just pr -> do
+            let murl = getFirstResultURL' pr
+            case murl of
+                Nothing -> return NoResponse
+                Just url -> return $ Giphy url
 
 responseToMessage :: Int -> GiphyBotResponse -> SendMessageParams
 responseToMessage id NoResponse = SendMessageParams
@@ -67,9 +73,19 @@ getUpdateChatId :: Maybe Update -> Maybe Int
 getUpdateChatId mupdate = mupdate >>= updateMessage >>=
                           return . getChatId . messageChat
 
+head' :: [a] -> Maybe a
+head' [] = Nothing
+head' (x:_) = Just x
+
+getFirstGiphy' :: PaginatedResult -> Maybe GiphyResult
+getFirstGiphy' pr = head' . result $ pr
+
+getFirstResultURL' :: PaginatedResult -> Maybe URL
+getFirstResultURL' pr = getOriginalImageURL <$> getFirstGiphy' pr
+
 giphybot :: SpockT IO ()
 giphybot = do
-    get root $ json ("GiphyBot" :: String)
+    Web.Spock.Safe.get root $ json ("GiphyBot" :: String)
     post "webhook" $ do
         mupdate <- jsonBody :: ActionT IO (Maybe Update)
         let text = fromMaybe "" (getText mupdate)
@@ -86,5 +102,46 @@ giphybot = do
                 _ <- liftIO $ sendMessage t m
                 json ("Ok" :: String)
 
+runGiphybot :: IO ()
+runGiphybot = runSpock 8000 $ spockT Prelude.id $ giphybot
+
+updateToCommand :: Update -> Command
+updateToCommand u = case mc of
+    Nothing -> UnknownCommand
+    Just c  -> c
+    where mc = updateMessage u >>= messageText >>= return . parseMessage
+
+maximum' :: Ord a => [a] -> Maybe a
+maximum' [] = Nothing
+maximum' xs = Just (Prelude.maximum xs)
+
+processUpdates :: String -> StateT Int IO ()
+processUpdates token = do
+    lastId <- S.get
+    liftIO $ print $ "Looking for updates from ID: " ++ show lastId
+    mresponse <- liftIO $
+        getUpdates token (def { getUpdatesOffset = Just lastId })
+    let response = fromMaybe
+                   (TelegramResponse { responseOk = True
+                                     , responseResult = Nothing
+                                     , responseDescription = Nothing })
+                   mresponse
+    let updates = fromMaybe [] (responseResult response)
+    let commands = Prelude.map updateToCommand updates
+    let mmessages = Prelude.map (updateMessage) updates
+    let mids = Prelude.map ((getChatId . messageChat) <$>) mmessages
+    let mlastId' = maximum' $ Prelude.map updateId updates
+    giphyResponses <- liftIO $ forM commands execCmd
+    let idsAndResponses = Prelude.zip mids giphyResponses
+    let msendParams = Prelude.map (\(mid,r) -> flip responseToMessage r <$> mid) idsAndResponses
+    let sendParams = catMaybes msendParams
+    liftIO $ forM_ sendParams (sendMessage token)
+    case mlastId' of
+        Nothing -> return ()
+        Just id -> S.put (id + 1)
+    processUpdates token
+
 main :: IO ()
-main = runSpock 8000 $ spockT Prelude.id $ giphybot
+main = do
+    t <- telegramToken
+    S.evalStateT (processUpdates t) (635723122 :: Int)
