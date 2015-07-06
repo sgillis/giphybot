@@ -144,4 +144,6 @@ processUpdates token = do
 main :: IO ()
 main = do
     t <- telegramToken
-    S.evalStateT (processUpdates t) (635723122 :: Int)
+    mstartId <- lookupEnv "START_ID"
+    let startId = fromMaybe 0 (read <$> mstartId)
+    S.evalStateT (processUpdates t) startId
