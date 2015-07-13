@@ -25,6 +25,7 @@ data Command = SearchGiphy String
              deriving Show
 
 data GiphyBotResponse = Giphy URL
+                      | GiphyNotFound
                       | NoResponse
                       deriving Show
 
@@ -45,13 +46,19 @@ execCmd (SearchGiphy t) = do
         Just pr -> do
             let murl = getFirstResultURL' pr
             case murl of
-                Nothing -> return NoResponse
+                Nothing -> return GiphyNotFound
                 Just url -> return $ Giphy url
 
 responseToMessage :: Int -> GiphyBotResponse -> SendMessageParams
 responseToMessage id NoResponse = SendMessageParams
     { sendMessageChatId = id
     , sendMessageText = "Try /giphy <something>"
+    , sendMessageDisableWebPagePreview = Nothing
+    , sendMessageReplyToMessageId = Nothing
+    }
+responseToMessage id GiphyNotFound = SendMessageParams
+    { sendMessageChatId = id
+    , sendMessageText = "I'm sorry, I didn't find any GIFs :("
     , sendMessageDisableWebPagePreview = Nothing
     , sendMessageReplyToMessageId = Nothing
     }
