@@ -9,6 +9,10 @@ all: dirs docker update install
 docker:
 	sudo docker build -t $(PROJECT) .
 
+upload:
+	docker tag -f $(PROJECT) sgillis/$(PROJECT)
+	docker push sgillis/$(PROJECT)
+
 repl:
 	docker run \
 		$(INTERACTIVE) \

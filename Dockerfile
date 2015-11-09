@@ -9,3 +9,9 @@ RUN cabal install -j
 
 RUN mkdir /src
 WORKDIR /src
+
+ADD giphybot.cabal /src/giphybot.cabal
+RUN cabal install --dependencies-only
+ADD src /src/src
+RUN cabal configure
+RUN cabal build

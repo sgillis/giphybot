@@ -12,13 +12,17 @@ import Network.URL
 import Data.Text
 import Data.Default
 import Data.Maybe
-import Network.Telegram
+import Network.Telegram.Base
+import Network.Telegram.RequestTypes
+import Network.Telegram.ResponseTypes
 import Network.Giphy
 
 telegramToken :: IO String
 telegramToken = getEnv "TELEGRAM_TOKEN"
 
 giphyToken = publicToken
+
+hello = "hello"
 
 data Command = SearchGiphy String
              | UnknownCommand
